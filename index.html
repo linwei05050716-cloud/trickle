@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Trickle · watch</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#141821; --panel2:#1b202b; --line:#262c39;
+    --ink:#e8ecf3; --dim:#8b93a7; --acc:#36d399; --acc2:#f6c453; --warn:#f87272;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#16202c,#0b0d12);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+  .wrap{max-width:980px;margin:0 auto;padding:28px 20px 80px}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.3px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--acc);box-shadow:0 0 12px var(--acc)}
+  .pill{font:12px/1 var(--mono);color:var(--dim);border:1px solid var(--line);padding:6px 10px;border-radius:999px}
+  .pill b{color:var(--acc2)}
+  a.nav{color:var(--dim);text-decoration:none;font-size:13px;border:1px solid var(--line);padding:7px 12px;border-radius:10px}
+  a.nav:hover{color:var(--ink)}
+  .grid{display:grid;grid-template-columns:1.3fr .9fr;gap:18px}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px}
+  .stage{position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;
+    background:linear-gradient(135deg,#20283a,#0e1320);display:flex;align-items:center;justify-content:center}
+  .stage .live{position:absolute;top:12px;left:12px;background:#e23b3b;color:#fff;font:700 11px/1 var(--mono);
+    padding:6px 9px;border-radius:6px;letter-spacing:1px}
+  .stage .vw{position:absolute;top:12px;right:12px;background:#0008;color:#fff;font:600 12px/1 var(--mono);
+    padding:6px 9px;border-radius:6px}
+  .stage h2{font-size:20px;margin:0;text-align:center;opacity:.92}
+  .stage .sub{position:absolute;bottom:14px;left:14px;color:var(--dim);font-size:13px}
+  .stage.dropped{filter:grayscale(.7) brightness(.6)}
+  .stage .drop{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    background:#0009;color:var(--warn);font:700 14px/1 var(--mono)}
+  .stage.dropped .drop{display:flex}
+
+  .meter{margin-top:16px;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .meter .row{display:flex;justify-content:space-between;align-items:baseline}
+  .spent{font:700 40px/1 var(--mono);letter-spacing:-1px}
+  .spent.tick{color:var(--acc)}
+  .label{color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.8px}
+  .bar{height:8px;background:#0c0f16;border-radius:99px;margin:14px 0 6px;overflow:hidden}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),#1d9e74);width:0%}
+  .mini{display:flex;gap:18px;color:var(--dim);font:12px/1.4 var(--mono);margin-top:8px;flex-wrap:wrap}
+  .mini b{color:var(--ink)}
+
+  .controls{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+  button{font:600 14px/1 inherit;border-radius:10px;border:1px solid var(--line);padding:11px 16px;cursor:pointer;
+    background:var(--panel2);color:var(--ink)}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#06281c}
+  button.warn{color:var(--warn);border-color:#3a2530}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .field label{color:var(--dim);font-size:12px}
+  .field input{background:#0c0f16;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px;font:14px var(--mono)}
+  .split li{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed var(--line);font:13px/1 var(--mono)}
+  .split li:last-child{border-bottom:0}
+  .split .amt{color:var(--acc)}
+  ul{list-style:none;margin:0;padding:0}
+  h3{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);margin:0 0 10px}
+  .hint{color:var(--dim);font-size:12px;margin-top:10px}
+  .agentlog{font:11px/1.5 var(--mono);color:var(--dim);max-height:120px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="dot"></span> Trickle <span class="pill">settlement: <b id="mode">…</b></span></div>
+    <a class="nav" href="/creator.html">Creator dashboard →</a>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <div class="stage" id="stage">
+        <div class="live">● LIVE</div>
+        <div class="vw" id="vw">0 watching</div>
+        <h2 id="title">…</h2>
+        <div class="sub">pay-per-second · leave anytime, pay only for the seconds you watched</div>
+        <div class="drop">⚠ stream interrupted — meter paused, you are not being charged</div>
+      </div>
+
+      <div class="meter">
+        <div class="row">
+          <div>
+            <div class="label">you've paid</div>
+            <div class="spent" id="spent">$0.000000</div>
+          </div>
+          <div style="text-align:right">
+            <div class="label">rate</div>
+            <div style="font:700 18px/1 var(--mono);color:var(--acc2)" id="rate">—</div>
+          </div>
+        </div>
+        <div class="bar"><i id="bar"></i></div>
+        <div class="mini">
+          <span>seconds watched <b id="secs">0</b></span>
+          <span>budget left <b id="left">—</b></span>
+          <span>session <b id="sid">—</b></span>
+        </div>
+        <div class="controls">
+          <button class="primary" id="watch">▶ Start watching</button>
+          <button id="pause" disabled>⏸ Pause</button>
+          <button class="warn" id="leave" disabled>⏹ Leave</button>
+        </div>
+        <div class="hint">A real micro-payment settles every few seconds via Circle Gateway nanopayments on Arc (floor $0.000001). In mock mode it's simulated locally.</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="margin-bottom:18px">
+        <h3>Your authorization</h3>
+        <div class="field"><label>Spending rate (USDC / second)</label><input id="inRate" value="0.001" /></div>
+        <div class="field"><label>Budget cap (USDC)</label><input id="inBudget" value="0.25" /></div>
+        <div class="hint">You approve a <i>rate</i>, not a fixed price. The meter stops the instant you leave or the budget runs out.</div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <h3>Subscription vs. pay-per-second</h3>
+        <div style="display:flex;justify-content:space-between;font:13px var(--mono);padding:6px 0">
+          <span style="color:var(--dim)">A monthly sub would cost</span><span>$9.99</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font:13px var(--mono);padding:6px 0">
+          <span style="color:var(--dim)">You paid (this session)</span><span class="amt" id="cmpPaid" style="color:var(--acc)">$0.000000</span>
+        </div>
+        <div class="hint" id="cmpNote" style="margin-top:8px">Watch a bit — you only pay for the seconds you're here, no monthly commitment.</div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <h3>Live revenue split</h3>
+        <ul class="split" id="split"><li>…</li></ul>
+      </div>
+
+      <div class="card">
+        <h3>Autonomous viewer agent</h3>
+        <div class="hint" style="margin-top:0">Spawn an AI agent that holds a budget and decides every second whether the stream is worth its rate — pausing when value drops.</div>
+        <div class="controls">
+          <button id="spawn">+ Spawn agent</button>
+        </div>
+        <div class="agentlog" id="agentlog"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id)=>document.getElementById(id);
+let cfg = { micro:1e6, streamId:"live-jazz" };
+let session = null;       // {id}
+const usd = (micro)=> "$"+(micro/cfg.micro).toFixed(6);
+
+async function boot(){
+  cfg = await (await fetch("/api/config")).json();
+  $("mode").textContent = cfg.settlementMode;
+  connect();
+}
+
+function connect(){
+  const es = new EventSource("/api/events");
+  es.onmessage = (ev)=>{
+    const m = JSON.parse(ev.data);
+    if(m.type==="tick") render(m);
+  };
+  es.onerror = ()=>{ /* EventSource auto-reconnects */ };
+}
+
+function render(m){
+  const st = m.snap.streams.find(s=>s.id===cfg.streamId) || m.snap.streams[0];
+  if(!st) return;
+  $("title").textContent = st.title;
+  $("rate").textContent = "$"+st.ratePerSecUSDC.toFixed(6)+"/s";
+  $("vw").textContent = st.viewers+" watching";
+  $("stage").classList.toggle("dropped", !st.flowHealthy);
+
+  // split
+  $("split").innerHTML = st.splitEarned.map(s=>
+    `<li><span>${s.label}</span><span class="amt">${usd(s.amountMicro)}</span></li>`).join("");
+
+  // agents
+  $("agentlog").innerHTML = (m.agents||[]).map(a=>{
+    const v=a.session; const last=(a.log||[]).slice(-1)[0];
+    return `<div>${a.id} · ${v?usd(v.spentMicro):"—"} spent · ${last?last.msg:""}</div>`;
+  }).join("");
+}
+
+async function tickSession(){
+  if(!session) return;
+  const v = await (await fetch("/api/sessions/"+session.id)).json();
+  if(v.error) return;
+  const flash = (Number($("spent").dataset.v||0) !== v.spentMicro);
+  $("spent").textContent = usd(v.spentMicro);
+  $("spent").dataset.v = v.spentMicro;
+  $("spent").classList.toggle("tick", flash);
+  $("secs").textContent = v.seconds;
+  $("left").textContent = usd(v.remainingMicro);
+  $("sid").textContent = v.id;
+  $("bar").style.width = Math.min(100, 100*v.spentMicro/v.budgetMicro)+"%";
+  // subscription comparison
+  $("cmpPaid").textContent = usd(v.spentMicro);
+  const sub = 9.99, paid = v.spentMicro/cfg.micro;
+  if(paid>0){
+    const pct = (100*paid/sub);
+    $("cmpNote").textContent = `That's ${pct.toFixed(3)}% of a monthly subscription, for ${v.seconds}s actually watched.`;
+  }
+  if(!v.active){ endUI(); }
+}
+setInterval(tickSession, 1000);
+
+$("watch").onclick = async ()=>{
+  const body = { rateUSDC:Number($("inRate").value), budgetUSDC:Number($("inBudget").value) };
+  const r = await (await fetch("/api/streams/"+cfg.streamId+"/watch",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})).json();
+  if(r.error) return alert(r.error);
+  session = { id:r.sessionId };
+  $("watch").disabled=true; $("pause").disabled=false; $("leave").disabled=false;
+};
+$("pause").onclick = async ()=>{
+  if(!session) return;
+  const paused = $("pause").textContent.includes("Pause");
+  await fetch("/api/sessions/"+session.id+"/pause",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({paused})});
+  $("pause").textContent = paused ? "▶ Resume" : "⏸ Pause";
+};
+$("leave").onclick = async ()=>{
+  if(!session) return;
+  await fetch("/api/sessions/"+session.id+"/leave",{method:"POST"});
+  endUI();
+};
+function endUI(){
+  $("watch").disabled=false; $("pause").disabled=true; $("leave").disabled=true;
+  $("pause").textContent="⏸ Pause"; session=null;
+}
+$("spawn").onclick = async ()=>{
+  await fetch("/api/agents",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({maxRateUSDC:0.0015,budgetUSDC:0.1})});
+};
+
+boot();
+</script>
+</body>
+</html>

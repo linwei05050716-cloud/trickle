@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Trickle — pay-per-second streaming on Arc</title>
+<style>
+  :root{
+    --bg:#0b0d12;--panel:#141821;--panel2:#1b202b;--line:#262c39;--ink:#e8ecf3;--dim:#8b93a7;
+    --acc:#36d399;--acc2:#f6c453;--warn:#f87272;--mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#16202c,#0b0d12);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 20px 70px}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.3px;font-size:18px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--acc);box-shadow:0 0 12px var(--acc)}
+  .pill{font:12px/1 var(--mono);color:var(--dim);border:1px solid var(--line);padding:6px 10px;border-radius:999px}
+  .pill b{color:var(--acc2)}
+  .tag{color:var(--dim);font-size:13px;margin:0 0 18px}
+  .grid{display:grid;grid-template-columns:1.25fr .95fr;gap:18px}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:18px}
+  h3{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);margin:0 0 12px}
+  .stage{position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;
+    background:linear-gradient(135deg,#20283a,#0e1320);display:flex;align-items:center;justify-content:center}
+  .stage .live{position:absolute;top:12px;left:12px;background:#e23b3b;color:#fff;font:700 11px/1 var(--mono);padding:6px 9px;border-radius:6px;letter-spacing:1px}
+  .stage .vw{position:absolute;top:12px;right:12px;background:#0008;color:#fff;font:600 12px/1 var(--mono);padding:6px 9px;border-radius:6px}
+  .stage h2{font-size:20px;margin:0;text-align:center;opacity:.92}
+  .stage .sub{position:absolute;bottom:14px;left:14px;color:var(--dim);font-size:13px}
+  .stage.dropped{filter:grayscale(.7) brightness(.6)}
+  .stage .drop{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#0009;color:var(--warn);font:700 14px/1 var(--mono)}
+  .stage.dropped .drop{display:flex}
+  .meter{margin-top:16px;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .row{display:flex;justify-content:space-between;align-items:baseline}
+  .spent{font:700 40px/1 var(--mono);letter-spacing:-1px}
+  .spent.tick{color:var(--acc)}
+  .label{color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.8px}
+  .bar{height:8px;background:#0c0f16;border-radius:99px;margin:14px 0 6px;overflow:hidden}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),#1d9e74);width:0%}
+  .mini{display:flex;gap:18px;color:var(--dim);font:12px/1.4 var(--mono);margin-top:8px;flex-wrap:wrap}
+  .mini b{color:var(--ink)}
+  .controls{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+  button{font:600 14px/1 inherit;border-radius:10px;border:1px solid var(--line);padding:11px 16px;cursor:pointer;background:var(--panel2);color:var(--ink)}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#06281c}
+  button.warn{color:var(--warn);border-color:#3a2530}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .field label{color:var(--dim);font-size:12px}
+  .field input{background:#0c0f16;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px;font:14px var(--mono)}
+  .split li{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px dashed var(--line);font:13px var(--mono)}
+  .split li:last-child{border-bottom:0}
+  .split .amt{color:var(--acc);font-weight:700}
+  .split .pct{color:var(--dim);font-size:11px;margin-left:8px}
+  ul{list-style:none;margin:0;padding:0}
+  .hint{color:var(--dim);font-size:12px;margin-top:10px}
+  .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:6px}
+  .kpi .val{font:700 22px/1.1 var(--mono);margin-top:6px}
+  .kpi .val.acc{color:var(--acc)}
+  .rcpt{font:11px/1.5 var(--mono);border-bottom:1px solid var(--line);padding:8px 0}
+  .rcpt:last-child{border-bottom:0}
+  .rcpt .top{display:flex;justify-content:space-between;color:var(--ink)}
+  .rcpt .hash{color:var(--dim);word-break:break-all}
+  .rcpt .amt{color:var(--acc2);font-weight:700}
+  .feed{max-height:200px;overflow:auto}
+  .badge{font:11px/1 var(--mono);padding:5px 8px;border-radius:6px}
+  .badge.ok{background:#10301f;color:var(--acc)}
+  .badge.bad{background:#3a1f24;color:var(--warn)}
+  .agentlog{font:11px/1.5 var(--mono);color:var(--dim);max-height:96px;overflow:auto;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="dot"></span> Trickle</div>
+    <span class="pill">settlement: <b>mock (browser)</b> · Arc · USDC</span>
+  </header>
+  <p class="tag">Pay-per-second streaming payments for live content — settled on Arc in USDC. Leave anytime, pay only for the seconds you watched.</p>
+
+  <div class="grid">
+    <!-- viewer side -->
+    <div>
+      <div class="card">
+        <div class="stage" id="stage">
+          <div class="live">● LIVE</div>
+          <div class="vw" id="vw">0 watching</div>
+          <h2 id="title">Late Night Jazz — live set</h2>
+          <div class="sub">pay-per-second · continuous authorization</div>
+          <div class="drop">⚠ stream interrupted — meter paused, you are not charged</div>
+        </div>
+        <div class="meter">
+          <div class="row">
+            <div><div class="label">you've paid</div><div class="spent" id="spent">$0.000000</div></div>
+            <div style="text-align:right"><div class="label">rate</div><div style="font:700 18px/1 var(--mono);color:var(--acc2)" id="rate">$0.001000/s</div></div>
+          </div>
+          <div class="bar"><i id="bar"></i></div>
+          <div class="mini">
+            <span>seconds watched <b id="secs">0</b></span>
+            <span>budget left <b id="left">—</b></span>
+          </div>
+          <div class="controls">
+            <button class="primary" id="watch">▶ Start watching</button>
+            <button id="pause" disabled>⏸ Pause</button>
+            <button class="warn" id="leave" disabled>⏹ Leave</button>
+          </div>
+          <div class="hint">A micro-payment settles every few seconds via Circle Gateway nanopayments (floor $0.000001). This page runs the engine locally; the repo's Node server settles real USDC on Arc.</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Your authorization</h3>
+        <div class="field"><label>Spending rate (USDC / second)</label><input id="inRate" value="0.001" /></div>
+        <div class="field"><label>Budget cap (USDC)</label><input id="inBudget" value="0.25" /></div>
+        <div class="hint">You approve a <i>rate</i>, not a fixed price.</div>
+      </div>
+      <div class="card">
+        <h3>Subscription vs. pay-per-second</h3>
+        <div class="row" style="font:13px var(--mono);padding:5px 0"><span style="color:var(--dim)">A monthly sub would cost</span><span>$9.99</span></div>
+        <div class="row" style="font:13px var(--mono);padding:5px 0"><span style="color:var(--dim)">You paid (this session)</span><span style="color:var(--acc)" id="cmpPaid">$0.000000</span></div>
+        <div class="hint" id="cmpNote">Watch a bit — you only pay for the seconds you're here, no monthly commitment.</div>
+      </div>
+    </div>
+
+    <!-- creator side -->
+    <div>
+      <div class="card">
+        <h3>Creator dashboard</h3>
+        <div class="kpis">
+          <div class="kpi"><div class="label">Live viewers</div><div class="val" id="kViewers">0</div></div>
+          <div class="kpi"><div class="label">Earned (settled)</div><div class="val acc" id="kEarned">$0.000000</div></div>
+          <div class="kpi"><div class="label">Accruing now</div><div class="val" id="kAccruing">$0.000000</div></div>
+          <div class="kpi"><div class="label">Viewer-seconds</div><div class="val" id="kSecs">0</div></div>
+        </div>
+        <div class="controls" style="margin-top:12px">
+          <span class="badge ok" id="flowbadge">flow healthy</span>
+          <button id="flowbtn" data-next="false">Simulate stream drop</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Live revenue split</h3>
+        <ul class="split" id="split"></ul>
+      </div>
+      <div class="card">
+        <h3>Settled batches (Gateway nanopayments)</h3>
+        <div class="feed" id="feed"><div style="color:var(--dim);font:12px var(--mono)">waiting for the first viewer…</div></div>
+      </div>
+      <div class="card">
+        <h3>Autonomous viewer agent</h3>
+        <div class="hint" style="margin-top:0">An AI agent holds a budget and decides every second whether the stream is worth its rate.</div>
+        <div class="controls"><button id="spawn">+ Spawn agent</button></div>
+        <div class="agentlog" id="agentlog"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- in-browser engine (mirrors the Node lib/ modules) ----
+const MICRO=1e6;
+const usd=(m)=>"$"+(m/MICRO).toFixed(6);
+const fakeHash=()=>{let s="0x";for(let i=0;i<64;i++)s+="0123456789abcdef"[(Math.random()*16)|0];return s;};
+function splitToAmounts(splits,amt){const tw=splits.reduce((a,s)=>a+s.weight,0)||1;let al=0;return splits.map((s,i)=>{const last=i===splits.length-1;const a=last?amt-al:Math.floor(amt*s.weight/tw);al+=a;return{to:s.to,label:s.label,amountMicro:a};});}
+
+const stream={id:"live-jazz",title:"Late Night Jazz — live set",ratePerSecMicro:1000,flowHealthy:true,
+  splits:[{to:"wallet_artist",label:"Artist (lead)",weight:70},{to:"wallet_band",label:"Backing band",weight:20},{to:"wallet_host",label:"Venue / host",weight:10}],
+  earnedMicro:0,accruedMicro:0,seconds:0};
+const sessions=new Map(); let receipts=[]; let totalSettled=0; let me=null; const agents=[];
+let tick=0;
+
+function openSession({viewer,rateMicro,budgetMicro}){const id="s"+Math.random().toString(36).slice(2,8);
+  const s={id,viewer,approvedRateMicro:rateMicro,budgetMicro,remainingMicro:budgetMicro,spentMicro:0,seconds:0,active:true,paused:false,pendingMicro:0};
+  sessions.set(id,s);return s;}
+function activeViewers(){return [...sessions.values()].filter(s=>s.active).length;}
+
+function settle(viewer,amount){const resolved=splitToAmounts(stream.splits,amount);totalSettled+=amount;
+  receipts.unshift({ts:Date.now(),from:viewer,amountMicro:amount,txHash:fakeHash()});if(receipts.length>40)receipts.pop();return resolved;}
+
+function engineTick(){tick++;
+  for(const s of sessions.values()){
+    if(!s.active||s.paused)continue;
+    if(!stream.flowHealthy)continue;
+    const rate=Math.min(s.approvedRateMicro,stream.ratePerSecMicro);
+    const charge=Math.min(rate,s.remainingMicro);
+    if(charge<=0){s.active=false;continue;}
+    s.spentMicro+=charge;s.remainingMicro-=charge;s.pendingMicro+=charge;s.seconds++;
+    stream.accruedMicro+=charge;stream.seconds++;
+  }
+  if(tick%5===0){ // flush batches
+    for(const s of sessions.values()){
+      if(s.pendingMicro<=0)continue;const amt=s.pendingMicro;s.pendingMicro=0;
+      stream.accruedMicro-=amt;stream.earnedMicro+=amt;settle(s.viewer,amt);
+    }
+  }
+  // ambient audience churn
+  audienceStep();
+  // agents decide
+  for(const a of agents)a.decide();
+  render();
+}
+
+// ambient audience
+const NAMES=["ava","kenji","noor","diego","mei","sam","lina","omar","yuki","tariq","rosa","finn"];
+const ambient=new Map();
+function audienceStep(){const now=Date.now();
+  for(const [sid,m] of ambient){if(now>=m.leaveAt){const s=sessions.get(sid);if(s)s.active=false;ambient.delete(sid);}}
+  const target=6, deficit=target-ambient.size;
+  if(deficit>0&&Math.random()<0.7){const viewer=NAMES[(Math.random()*NAMES.length)|0]+"_"+Math.random().toString(36).slice(2,4);
+    const rate=[0.0008,0.001,0.0012,0.0015][(Math.random()*4)|0];const s=openSession({viewer,rateMicro:rate*1e6,budgetMicro:(0.05+Math.random()*0.25)*1e6});
+    ambient.set(s.id,{leaveAt:now+(8+Math.random()*32)*1000});}
+}
+
+// autonomous agent
+function makeValuation(){let t=0;return()=>{t+=0.15;return Math.max(0,Math.round(1100+700*Math.sin(t)+(Math.random()-0.5)*200));};}
+function spawnAgent(){const id="agent_"+Math.random().toString(36).slice(2,6);
+  const s=openSession({viewer:id,rateMicro:0.0015*1e6,budgetMicro:0.1*1e6});const val=makeValuation();const log=[];
+  const a={id,session:s,log,decide(){const v=this.session;if(!v.active)return;
+    const price=Math.min(stream.ratePerSecMicro,1500);const value=val();
+    if(v.remainingMicro<price*3){v.active=false;log.unshift("budget nearly spent → leaving");return;}
+    if(value<price){if(!v.paused){v.paused=true;log.unshift(`value ${value} < price ${price} → pause`);}}
+    else{if(v.paused){v.paused=false;log.unshift(`value ${value} ≥ price ${price} → resume`);}}
+    if(log.length>8)log.pop();}};
+  agents.push(a);
+}
+
+// ---- UI ----
+const $=(id)=>document.getElementById(id);
+function render(){
+  $("vw").textContent=activeViewers()+" watching";
+  $("stage").classList.toggle("dropped",!stream.flowHealthy);
+  // viewer meter
+  if(me){const v=me;const flash=Number($("spent").dataset.v||0)!==v.spentMicro;
+    $("spent").textContent=usd(v.spentMicro);$("spent").dataset.v=v.spentMicro;$("spent").classList.toggle("tick",flash);
+    $("secs").textContent=v.seconds;$("left").textContent=usd(v.remainingMicro);
+    $("bar").style.width=Math.min(100,100*v.spentMicro/v.budgetMicro)+"%";
+    $("cmpPaid").textContent=usd(v.spentMicro);
+    const paid=v.spentMicro/MICRO;if(paid>0)$("cmpNote").textContent=`That's ${(100*paid/9.99).toFixed(3)}% of a monthly subscription, for ${v.seconds}s actually watched.`;
+    if(!v.active)endUI();}
+  // creator
+  $("kViewers").textContent=activeViewers();
+  $("kEarned").textContent=usd(stream.earnedMicro);
+  $("kAccruing").textContent=usd(stream.accruedMicro);
+  $("kSecs").textContent=stream.seconds;
+  $("flowbadge").textContent=stream.flowHealthy?"flow healthy":"flow DROPPED";
+  $("flowbadge").className="badge "+(stream.flowHealthy?"ok":"bad");
+  $("flowbtn").textContent=stream.flowHealthy?"Simulate stream drop":"Restore stream";
+  const tw=stream.splits.reduce((a,s)=>a+s.weight,0);
+  $("split").innerHTML=splitToAmounts(stream.splits,stream.earnedMicro).map((s,i)=>
+    `<li><span>${s.label}<span class="pct">${Math.round(100*stream.splits[i].weight/tw)}%</span></span><span class="amt">${usd(s.amountMicro)}</span></li>`).join("");
+  $("feed").innerHTML=receipts.slice(0,8).map(r=>
+    `<div class="rcpt"><div class="top"><span>${new Date(r.ts).toLocaleTimeString()} · ${r.from}</span><span class="amt">${usd(r.amountMicro)}</span></div><div class="hash">${r.txHash}</div></div>`).join("")||'<div style="color:var(--dim);font:12px var(--mono)">waiting…</div>';
+  $("agentlog").innerHTML=agents.map(a=>`<div>${a.id} · ${usd(a.session.spentMicro)} · ${(a.log[0]||"")}</div>`).join("");
+}
+function endUI(){$("watch").disabled=false;$("pause").disabled=true;$("leave").disabled=true;$("pause").textContent="⏸ Pause";me=null;}
+
+$("watch").onclick=()=>{me=openSession({viewer:"you",rateMicro:Number($("inRate").value)*1e6,budgetMicro:Number($("inBudget").value)*1e6});
+  $("watch").disabled=true;$("pause").disabled=false;$("leave").disabled=false;};
+$("pause").onclick=()=>{if(!me)return;me.paused=!me.paused;$("pause").textContent=me.paused?"▶ Resume":"⏸ Pause";};
+$("leave").onclick=()=>{if(!me)return;me.active=false;endUI();};
+$("flowbtn").onclick=()=>{stream.flowHealthy=!stream.flowHealthy;};
+$("spawn").onclick=()=>spawnAgent();
+
+setInterval(engineTick,1000);
+render();
+</script>
+</body>
+</html>

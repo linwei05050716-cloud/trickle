@@ -1,0 +1,23 @@
+{
+  "name": "trickle",
+  "version": "0.1.0",
+  "description": "Pay-per-second streaming nanopayments for live content, settled on Arc in USDC. Built for the Lepton Agents Hackathon (RFB 4).",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "arc",
+    "circle",
+    "usdc",
+    "nanopayments",
+    "x402",
+    "streaming-payments",
+    "lepton"
+  ],
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "dependencies": {}
+}
