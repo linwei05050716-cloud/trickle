@@ -131,6 +131,8 @@ const server = createServer(async (req, res) => {
 
   if (p === "/api/state" && m === "GET") return send(res, 200, engine.snapshot());
 
+  if (p === "/api/metrics" && m === "GET") return send(res, 200, engine.metrics());
+
   if (p === "/api/receipts" && m === "GET")
     return send(res, 200, (gateway.receipts || []).slice(-40).reverse());
 

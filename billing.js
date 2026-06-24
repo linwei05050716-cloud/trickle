@@ -24,6 +24,23 @@ export class BillingEngine {
     this.tickCount = 0;
     this.listeners = new Set(); // for server-sent updates
     this._timer = null;
+    // cumulative traction metrics (the numbers judges ask for)
+    this._payers = new Set();   // distinct paying viewers ever seen
+    this._viewerSeconds = 0;    // total seconds actually delivered & charged
+    this._peakConcurrent = 0;   // highest simultaneous active viewers
+    this._startedAt = Date.now();
+  }
+
+  // Cumulative traction snapshot for the dashboard / /api/metrics.
+  metrics() {
+    return {
+      uniquePayers: this._payers.size,
+      viewerSeconds: this._viewerSeconds,
+      peakConcurrent: this._peakConcurrent,
+      totalSettledMicro: this.gateway.stats().totalSettledMicro,
+      settledBatches: this.gateway.stats().batches,
+      uptimeSec: Math.round((Date.now() - this._startedAt) / 1000),
+    };
   }
 
   // ---- streams ----
@@ -139,7 +156,14 @@ export class BillingEngine {
       session.seconds += 1;
       stream.accruedMicro += charge;
       stream.seconds += 1;
+      // traction metrics: this viewer paid for a real second of delivery
+      this._payers.add(session.viewer);
+      this._viewerSeconds += 1;
     }
+
+    // track peak concurrent viewers (a traction high-water mark)
+    const activeNow = [...this.sessions.values()].filter((s) => s.active).length;
+    if (activeNow > this._peakConcurrent) this._peakConcurrent = activeNow;
 
     // flush settled batches on the batch cadence
     if (this.tickCount % this.batchEverySec === 0) {

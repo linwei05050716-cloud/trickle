@@ -110,6 +110,7 @@ Arc. See `settlement.js` (`CircleGateway`) for the Gateway request shape.
 | `POST` | `/api/streams/:id/flow` | Proof-of-flow toggle (`{healthy}`) |
 | `POST` | `/api/agents` | Spawn an autonomous viewer agent |
 | `GET` | `/api/state` | Full snapshot (streams, viewers, splits, gateway stats) |
+| `GET` | `/api/metrics` | Cumulative traction: unique payers, viewer-seconds, peak concurrent, total settled |
 | `GET` | `/api/events` | Server-sent events: a fresh snapshot every second |
 | `GET` | `/api/articles/:id` | Read an article — returns **HTTP 402** with x402 payment requirements until paid |
 | `POST` | `/api/articles/:id/pay` | Settle the per-read nanopayment, get a short-lived access token |

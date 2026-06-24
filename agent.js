@@ -9,7 +9,7 @@
 // low. The agent turns "what should this cost?" into a continuous decision.
 
 export class ViewerAgent {
-  constructor({ id, engine, streamId, budgetMicro, maxRateMicro, valuation }) {
+  constructor({ id, engine, streamId, budgetMicro, maxRateMicro, valuation, targetHorizonSec }) {
     this.id = id;                 // agent wallet id
     this.engine = engine;
     this.streamId = streamId;
@@ -19,6 +19,11 @@ export class ViewerAgent {
     // (micro-USDC). Defaults to a noisy estimate that drifts over time, so the
     // agent visibly enters and exits as perceived value crosses the price.
     this.valuation = valuation || defaultValuation();
+    // budget pacing: the agent tries to make its budget last this long. If it
+    // is burning faster than that, it gets pickier (raises its value bar) to
+    // conserve — a real budget-management decision, not just on/off.
+    this.targetHorizonSec = targetHorizonSec || 90;
+    this._surgeNoted = false;
     this.session = null;
     this.log = [];
     this._timer = null;
@@ -55,20 +60,41 @@ export class ViewerAgent {
     const price = Math.min(stream.ratePerSecMicro, this.maxRateMicro);
     const value = this.valuation();
 
+    // surge awareness: if the stream now charges more than the agent's cap, it
+    // can only pay its approved rate — note it once.
+    if (stream.ratePerSecMicro > this.maxRateMicro && !this._surgeNoted) {
+      this._surgeNoted = true;
+      this._say(`surge: stream rate ${stream.ratePerSecMicro} > my cap ${this.maxRateMicro}; paying my cap`);
+    } else if (stream.ratePerSecMicro <= this.maxRateMicro) {
+      this._surgeNoted = false;
+    }
+
     // low-budget guard: stop before the cap is hit unexpectedly
     if (view.remainingMicro < price * 3) {
       return this.stop(`budget nearly spent (${view.remainingMicro} micro left)`);
     }
-    // value-based decision: pay only while it's worth at least the price
-    if (value < price) {
+
+    // budget pacing: how many more seconds the budget should cover vs. how many
+    // it can actually afford. If burning too fast, raise the value bar to conserve.
+    const affordableSec = price > 0 ? view.remainingMicro / price : Infinity;
+    const wantSec = Math.max(0, this.targetHorizonSec - view.seconds);
+    const overPace = affordableSec < wantSec; // spending faster than the plan
+    const bar = overPace ? Math.round(price * 1.3) : price; // pickier when over budget pace
+
+    // value-based decision: pay only while it's worth at least the (paced) bar
+    if (value < bar) {
       if (!view.paused) {
         this.engine.pauseSession(this.session.id, true);
-        this._say(`value ${value} < price ${price} -> pausing meter`);
+        this._say(
+          overPace
+            ? `over budget pace -> raising bar to ${bar}; value ${value} < bar, pausing`
+            : `value ${value} < price ${price} -> pausing meter`
+        );
       }
     } else {
       if (view.paused) {
         this.engine.pauseSession(this.session.id, false);
-        this._say(`value ${value} >= price ${price} -> resuming`);
+        this._say(`value ${value} >= bar ${bar} -> resuming`);
       }
     }
   }

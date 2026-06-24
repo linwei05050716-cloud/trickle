@@ -116,3 +116,25 @@ test("MICRO floor equals Gateway's $0.000001 nanopayment unit", () => {
   assert.equal(MICRO, 1_000_000);
   assert.equal(1 / MICRO, 0.000001);
 });
+
+test("traction metrics count unique payers and viewer-seconds", () => {
+  const { engine } = newEngine();
+  engine.openSession({ streamId: "s1", viewer: "alice", rateMicro: 1000, budgetMicro: 100000 });
+  engine.openSession({ streamId: "s1", viewer: "bob", rateMicro: 1000, budgetMicro: 100000 });
+  engine._tick();
+  engine._tick();
+  const m = engine.metrics();
+  assert.equal(m.uniquePayers, 2);
+  assert.equal(m.viewerSeconds, 4); // 2 viewers * 2 seconds
+  assert.equal(m.peakConcurrent, 2);
+});
+
+test("paused/dropped seconds are not counted as delivered viewer-seconds", () => {
+  const { engine } = newEngine();
+  engine.openSession({ streamId: "s1", viewer: "x", rateMicro: 1000, budgetMicro: 100000 });
+  engine._tick();                       // +1 delivered
+  engine.setFlowHealthy("s1", false);
+  engine._tick();                       // dropped -> not delivered
+  const m = engine.metrics();
+  assert.equal(m.viewerSeconds, 1);
+});
