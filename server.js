@@ -36,6 +36,37 @@ if ((process.env.TRICKLE_AUDIENCE || "on").toLowerCase() !== "off") audience.sta
 
 const agents = new Map();
 
+// ---- x402 per-article paywall (RFB 6: creator & publisher monetization) ----
+// A single article sold per-read with a real HTTP 402 "Payment Required" flow.
+// No subscription: the reader pays a sub-cent price once, settled as a Gateway
+// nanopayment, and gets a short-lived access token. This is the x402 standard
+// applied to content instead of APIs.
+const ARTICLES = new Map([
+  [
+    "the-smallest-coin",
+    {
+      id: "the-smallest-coin",
+      title: "The Smallest Coin",
+      author: "wallet_writer",
+      priceMicro: 3000, // $0.003 to read — far below a subscription, impossible before nanopayments
+      body:
+        "Every economy mints a smallest coin, struck so ordinary people could pay " +
+        "for everyday things. Software has no such floor, so the lepton becomes the " +
+        "nanopayment — and a single article becomes sellable on its own.",
+    },
+  ],
+]);
+const articleTokens = new Map(); // token -> { articleId, exp }
+function newToken(articleId) {
+  const t = "pay_" + Math.random().toString(36).slice(2, 12);
+  articleTokens.set(t, { articleId, exp: Date.now() + 10 * 60_000 });
+  return t;
+}
+function tokenValid(token, articleId) {
+  const rec = articleTokens.get(token);
+  return !!rec && rec.articleId === articleId && rec.exp > Date.now();
+}
+
 // ---- tiny helpers ----
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -193,6 +224,51 @@ const server = createServer(async (req, res) => {
     if (b.on === false) audience.stop();
     else audience.start();
     return send(res, 200, { ok: true, on: b.on !== false });
+  }
+
+  // x402: read an article — 402 Payment Required until paid (per-read, no sub)
+  if ((mm = p.match(/^\/api\/articles\/([^/]+)$/)) && m === "GET") {
+    const art = ARTICLES.get(mm[1]);
+    if (!art) return send(res, 404, { error: "no such article" });
+    const token = req.headers["x-payment-token"];
+    if (tokenValid(token, art.id)) {
+      return send(res, 200, { id: art.id, title: art.title, body: art.body });
+    }
+    // HTTP 402 with x402-style payment requirements
+    res.writeHead(402, { "content-type": "application/json; charset=utf-8" });
+    return res.end(
+      JSON.stringify({
+        x402Version: 1,
+        error: "payment required",
+        accepts: [
+          {
+            scheme: "exact",
+            network: "arc-sepolia",
+            asset: "USDC",
+            amountMicro: art.priceMicro,
+            amountUSDC: art.priceMicro / MICRO,
+            payTo: art.author,
+            resource: `/api/articles/${art.id}`,
+            description: `Read "${art.title}" — pay once, no subscription`,
+            payEndpoint: `/api/articles/${art.id}/pay`,
+          },
+        ],
+      })
+    );
+  }
+  // settle the per-article nanopayment, return a short-lived access token
+  if ((mm = p.match(/^\/api\/articles\/([^/]+)\/pay$/)) && m === "POST") {
+    const art = ARTICLES.get(mm[1]);
+    if (!art) return send(res, 404, { error: "no such article" });
+    const b = await readBody(req);
+    const from = String(b.from || "reader_" + Math.random().toString(36).slice(2, 8));
+    await gateway.settleBatch({
+      from,
+      amountMicro: art.priceMicro,
+      splits: [{ to: art.author, label: "Author", weight: 100 }],
+    });
+    const token = newToken(art.id);
+    return send(res, 200, { ok: true, token, paidMicro: art.priceMicro, header: "X-Payment-Token" });
   }
 
   // ---- static ----

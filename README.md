@@ -111,6 +111,33 @@ Arc. See `settlement.js` (`CircleGateway`) for the Gateway request shape.
 | `POST` | `/api/agents` | Spawn an autonomous viewer agent |
 | `GET` | `/api/state` | Full snapshot (streams, viewers, splits, gateway stats) |
 | `GET` | `/api/events` | Server-sent events: a fresh snapshot every second |
+| `GET` | `/api/articles/:id` | Read an article — returns **HTTP 402** with x402 payment requirements until paid |
+| `POST` | `/api/articles/:id/pay` | Settle the per-read nanopayment, get a short-lived access token |
+
+## x402 per-article paywall (RFB 6: creator & publisher monetization)
+
+Beyond streaming, Trickle ships a real `x402` flow applied to *content*. Request an
+article and you get a standard `HTTP 402 Payment Required` with machine-readable
+payment requirements; pay the sub-cent price once (settled as a Gateway nanopayment,
+no subscription) and read it. This is the "monetize a single article" case from RFB 6,
+end to end:
+
+```bash
+curl -i localhost:4021/api/articles/the-smallest-coin            # 402 + {accepts:[...]}
+curl -s -XPOST localhost:4021/api/articles/the-smallest-coin/pay # -> { token }
+curl -H "x-payment-token: <token>" localhost:4021/api/articles/the-smallest-coin  # 200 + body
+```
+
+## Tests
+
+```bash
+node --test      # 9 tests: split reconciliation, per-second metering, budget caps,
+                 # proof-of-flow, pause, and batched settlement
+```
+
+The engine is covered by unit tests so the money math is verifiable, not just asserted:
+splits always reconcile to the micro, budgets are never overspent, and the meter pauses
+exactly when the stream stops delivering.
 
 ## License
 
